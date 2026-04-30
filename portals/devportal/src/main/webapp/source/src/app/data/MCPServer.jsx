@@ -20,6 +20,8 @@ import APIClientFactory from './APIClientFactory';
 import Resource from './Resource';
 import Utils from './Utils';
 
+const Configurations = require('Config');
+
 /**
  * MCPServer class to handle MCP server related operations.
  */
@@ -266,9 +268,10 @@ export default class MCPServer extends Resource {
      * @returns {Promise} - Promise resolving to the API response.
      */
     getDocuments(mcpServerId, callback = null) {
+        const limit = Configurations.app.documentCount || 80;
         const promise = this.client.then((client) => {
             return client.apis['MCP Server Documents'].getMCPServerDocuments(
-                { mcpServerId },
+                { mcpServerId, limit },
                 this._requestMetaData(),
             );
         });

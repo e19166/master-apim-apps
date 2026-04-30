@@ -19,6 +19,8 @@ import Resource from './Resource';
 import Wsdl from './Wsdl';
 import Utils from './Utils';
 
+const Configurations = require('Config');
+
 /**
  * An abstract representation of an API
  */
@@ -90,8 +92,9 @@ export default class API extends Resource {
      * @returns {promise} With given callback attached to the success chain else API invoke promise.
      */
     getDocumentsByAPIId(id, callback = null) {
+        const limit = Configurations.app.documentCount || 80;
         const promiseGet = this.client.then((client) => {
-            return client.apis['API Documents'].get_apis__apiId__documents({ apiId: id }, this._requestMetaData());
+            return client.apis['API Documents'].get_apis__apiId__documents({ apiId: id, limit }, this._requestMetaData());
         });
         if (callback) {
             return promiseGet.then(callback);
