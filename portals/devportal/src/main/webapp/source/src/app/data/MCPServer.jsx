@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import Configurations from 'Config';
 import APIClientFactory from './APIClientFactory';
 import Resource from './Resource';
 import Utils from './Utils';
@@ -266,9 +267,10 @@ export default class MCPServer extends Resource {
      * @returns {Promise} - Promise resolving to the API response.
      */
     getDocuments(mcpServerId, callback = null) {
+        const limit = Configurations.app.documentCount || 1000;
         const promise = this.client.then((client) => {
             return client.apis['MCP Server Documents'].getMCPServerDocuments(
-                { mcpServerId },
+                { mcpServerId, limit },
                 this._requestMetaData(),
             );
         });
