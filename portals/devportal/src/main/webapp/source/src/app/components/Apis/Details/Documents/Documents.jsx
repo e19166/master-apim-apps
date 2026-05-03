@@ -40,7 +40,7 @@ import Box from '@mui/material/Box';
 function Documents(props) {
     const { api } = useContext(ApiContext);
     const { intl, setbreadcrumbDocument } = props;
-    const { location: { pathname } } = props;
+    const { location: { pathname, search } } = props;
 
     const isMCPServer = api.type === 'MCP';
     const pathPattern = isMCPServer ? '/mcp-servers/:serverUuid/documents/:documentId' : '/apis/:apiUuid/documents/:documentId';
@@ -213,9 +213,12 @@ function Documents(props) {
                     from={isMCPServer
                         ? `/mcp-servers/${apiId}/documents`
                         : `/apis/${apiId}/documents`}
-                    to={isMCPServer
-                        ? `/mcp-servers/${apiId}/documents/${selectedDoc.documentId}`
-                        : `/apis/${apiId}/documents/${selectedDoc.documentId}`}
+                    to={{
+                        pathname: isMCPServer
+                            ? `/mcp-servers/${apiId}/documents/${selectedDoc.documentId}`
+                            : `/apis/${apiId}/documents/${selectedDoc.documentId}`,
+                        search,
+                    }}
                 />
             )}
             { selectedDoc && (
