@@ -35,16 +35,20 @@ import {
     Dialog,
     DialogTitle,
     DialogContent,
+    MenuItem,
+    Collapse,
 } from '@mui/material';
 import CONSTS from 'AppData/Constants';
 import { Link, useHistory } from 'react-router-dom';
 import API from 'AppData/api';
+import Configurations from 'Config';
 import { green } from '@mui/material/colors';
 import Alert from 'AppComponents/Shared/Alert';
 import { isRestricted } from 'AppData/AuthManager';
 import Radio from '@mui/material/Radio';
 import RadioGroup from '@mui/material/RadioGroup';
 import FormControlLabel from '@mui/material/FormControlLabel';
+import Checkbox from '@mui/material/Checkbox';
 import { APIContext } from 'AppComponents/Apis/Details/components/ApiContext';
 import { getBasePath } from 'AppComponents/Shared/Utils';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
@@ -262,6 +266,10 @@ const AddEditAIEndpoint = ({
     const [accessKey, setAccessKey] = useState(null);
     const [secretKey, setSecretKey] = useState(null);
     const [region, setRegion] = useState(null);
+    const [assumeRole, setAssumeRole] = useState(false);
+    const [roleArn, setRoleArn] = useState(null);
+    const [roleRegion, setRoleRegion] = useState(null);
+    const [roleExternalId, setRoleExternalId] = useState(null);
     const [showApiKey, setShowApiKey] = useState(false);
     const [authKeyIdentifier, setAuthKeyIdentifier] = useState('');
     const [authKeyIdentifierType, setAuthKeyIdentifierType] = useState(null);
@@ -342,6 +350,12 @@ const AddEditAIEndpoint = ({
                 if (securityConfig?.region) {
                     setRegion(securityConfig?.region);
                 }
+                if (securityConfig?.roleArn) {
+                    setAssumeRole(true);
+                    setRoleArn(securityConfig?.roleArn);
+                    setRoleRegion(securityConfig?.roleRegion);
+                    setRoleExternalId(securityConfig?.roleExternalId);
+                }
             } else {
                 // Load custom endpoint data from API
                 API.getApiEndpoint(apiObject.id, endpointId)
@@ -375,6 +389,12 @@ const AddEditAIEndpoint = ({
                         }
                         if (securityConfig?.region) {
                             setRegion(securityConfig?.region);
+                        }
+                        if (securityConfig?.roleArn) {
+                            setAssumeRole(true);
+                            setRoleArn(securityConfig?.roleArn);
+                            setRoleRegion(securityConfig?.roleRegion);
+                            setRoleExternalId(securityConfig?.roleExternalId);
                         }
                     })
                     .catch((error) => {
@@ -602,6 +622,34 @@ const AddEditAIEndpoint = ({
                     }
                 }
                 return false;
+            case 'roleArn':
+                if (
+                    llmProviderEndpointConfiguration?.authenticationConfiguration?.enabled === true &&
+                    llmProviderEndpointConfiguration?.authenticationConfiguration?.type === 'aws' &&
+                    assumeRole
+                ) {
+                    if (!fieldValue) {
+                        return intl.formatMessage({
+                            id: 'Apis.Details.Endpoints.AIEndpoints.AddEditAIEndpoint.error.empty.roleArn',
+                            defaultMessage: 'Role ARN cannot be empty',
+                        });
+                    }
+                }
+                return false;
+            case 'roleRegion':
+                if (
+                    llmProviderEndpointConfiguration?.authenticationConfiguration?.enabled === true &&
+                    llmProviderEndpointConfiguration?.authenticationConfiguration?.type === 'aws' &&
+                    assumeRole
+                ) {
+                    if (!fieldValue) {
+                        return intl.formatMessage({
+                            id: 'Apis.Details.Endpoints.AIEndpoints.AddEditAIEndpoint.error.empty.roleRegion',
+                            defaultMessage: 'Role Region cannot be empty',
+                        });
+                    }
+                }
+                return false;
             default:
                 return false;
         }
@@ -613,7 +661,9 @@ const AddEditAIEndpoint = ({
             hasErrors('apiKey', apiKeyValue, validateActive) ||
             hasErrors('secretKey', secretKey, validateActive) ||
             hasErrors('region', region, validateActive) ||
-            hasErrors('accessKey', accessKey, validateActive)) {
+            hasErrors('accessKey', accessKey, validateActive) ||
+            hasErrors('roleArn', roleArn, validateActive) ||
+            hasErrors('roleRegion', roleRegion, validateActive)) {
             return true;
         }
         return false;
@@ -721,15 +771,44 @@ const AddEditAIEndpoint = ({
             setSecretKey(seretKeyValue)
         } else if (field === "region") {
             setRegion(e.target.value)
+        } else if (field === "roleArn") {
+            setRoleArn(e.target.value)
+        } else if (field === "roleRegion") {
+            setRoleRegion(e.target.value)
+        } else if (field === "roleExternalId") {
+            setRoleExternalId(e.target.value)
         }
     }
     const handleOnBlurOnAWSCredentials = () => {
         const isProduction = state.deploymentStage === CONSTS.DEPLOYMENT_STAGE.production;
 
-        // Skip if apiKeyValue is null, empty, or ********
-        if (!secretKey || secretKey === '********') {
+        // Never send the literal '********' placeholder as a real secret value - but still save
+        // everything else. Bailing out entirely here (as this used to) silently dropped edits to
+        // roleArn/roleRegion/roleExternalId whenever secretKey hadn't also been touched.
+        const secretKeyToSave = secretKey === '********' ? '' : secretKey;
+        saveEndpointSecurityConfig({
+            ...CONSTS.DEFAULT_ENDPOINT_SECURITY,
+            type: llmProviderEndpointConfiguration.authenticationConfiguration.type,
+            service: llmProviderEndpointConfiguration.authenticationConfiguration.parameters.awsServiceName,
+            accessKey,
+            secretKey: secretKeyToSave,
+            region,
+            roleArn: assumeRole ? roleArn : null,
+            roleRegion: assumeRole ? roleRegion : null,
+            roleExternalId: assumeRole ? roleExternalId : null,
+            enabled: true,
+        }, isProduction ? 'production' : 'sandbox');
+    }
+    const handleAssumeRoleToggle = (e) => {
+        const { checked } = e.target;
+        setAssumeRole(checked);
+        setRoleArn(null);
+        setRoleRegion(null);
+        setRoleExternalId(null);
+        if (checked) {
             return;
         }
+        const isProduction = state.deploymentStage === CONSTS.DEPLOYMENT_STAGE.production;
         saveEndpointSecurityConfig({
             ...CONSTS.DEFAULT_ENDPOINT_SECURITY,
             type: llmProviderEndpointConfiguration.authenticationConfiguration.type,
@@ -737,6 +816,9 @@ const AddEditAIEndpoint = ({
             accessKey,
             secretKey,
             region,
+            roleArn: null,
+            roleRegion: null,
+            roleExternalId: null,
             enabled: true,
         }, isProduction ? 'production' : 'sandbox');
     }
@@ -881,6 +963,7 @@ const AddEditAIEndpoint = ({
     const IS_AWS_SIGV4_AUTH_ENABLED = (config) =>
         config?.authenticationConfiguration?.enabled === true &&
         config?.authenticationConfiguration?.type === 'aws';
+    const { regions } = Configurations.apis.endpoint.aws;
     return (
         <StyledGrid container justifyContent='center'>
             <Grid item sm={12} md={12} lg={8}>
@@ -1213,6 +1296,97 @@ const AddEditAIEndpoint = ({
                                                 shrink: true,
                                             }}
                                         />
+                                    </Grid>
+                                    <Grid item className={classes.extraPadding}>
+                                        <FormControlLabel
+                                            control={(
+                                                <Checkbox
+                                                    color='primary'
+                                                    checked={assumeRole}
+                                                    onChange={handleAssumeRoleToggle}
+                                                    disabled={isRestricted(
+                                                        ['apim:api_create'],
+                                                        apiObject
+                                                    )}
+                                                    name='enableSTSAssumeRole'
+                                                />
+                                            )}
+                                            label={(
+                                                <FormattedMessage
+                                                    id={'Apis.Details.Endpoints.AIEndpoints.Edit'
+                                                    + '.enableSTSAssumeRole'}
+                                                    defaultMessage='Enable STS AssumeRole'
+                                                />
+                                            )}
+                                        />
+                                        {assumeRole && (
+                                            <Collapse in={assumeRole}>
+                                                <TextField
+                                                    required
+                                                    disabled={isRestricted(
+                                                        ['apim:api_create'],
+                                                        apiObject
+                                                    )}
+                                                    label={(
+                                                        <FormattedMessage
+                                                            id='Apis.Details.Endpoints.AIEndpoints.Edit.roleArn'
+                                                            defaultMessage='Role ARN'
+                                                        />
+                                                    )}
+                                                    margin='normal'
+                                                    variant='outlined'
+                                                    className={classes.textField}
+                                                    value={roleArn}
+                                                    onChange={(e) => handleAWSCredentials(e, 'roleArn')}
+                                                    onBlur={handleOnBlurOnAWSCredentials}
+                                                />
+                                                <TextField
+                                                    select
+                                                    required
+                                                    disabled={isRestricted(
+                                                        ['apim:api_create'],
+                                                        apiObject
+                                                    )}
+                                                    label={(
+                                                        <FormattedMessage
+                                                            id='Apis.Details.Endpoints.AIEndpoints.Edit.roleRegion'
+                                                            defaultMessage='Role Region'
+                                                        />
+                                                    )}
+                                                    margin='normal'
+                                                    variant='outlined'
+                                                    className={classes.textField}
+                                                    value={roleRegion || ''}
+                                                    onChange={(e) => handleAWSCredentials(e, 'roleRegion')}
+                                                    onBlur={handleOnBlurOnAWSCredentials}
+                                                >
+                                                    {Object.entries(regions).map(([key, value]) => (
+                                                        <MenuItem key={key} value={key}>
+                                                            {value}
+                                                        </MenuItem>
+                                                    ))}
+                                                </TextField>
+                                                <TextField
+                                                    disabled={isRestricted(
+                                                        ['apim:api_create'],
+                                                        apiObject
+                                                    )}
+                                                    label={(
+                                                        <FormattedMessage
+                                                            id={'Apis.Details.Endpoints.AIEndpoints.Edit'
+                                                                + '.roleExternalId'}
+                                                            defaultMessage='External ID'
+                                                        />
+                                                    )}
+                                                    margin='normal'
+                                                    variant='outlined'
+                                                    className={classes.textField}
+                                                    value={roleExternalId}
+                                                    onChange={(e) => handleAWSCredentials(e, 'roleExternalId')}
+                                                    onBlur={handleOnBlurOnAWSCredentials}
+                                                />
+                                            </Collapse>
+                                        )}
                                     </Grid>
                                 </>
                             )}
