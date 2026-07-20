@@ -809,12 +809,13 @@ const AddEditAIEndpoint = ({
             return;
         }
         const isProduction = state.deploymentStage === CONSTS.DEPLOYMENT_STAGE.production;
+        const secretKeyToSave = secretKey === '********' ? '' : secretKey;
         saveEndpointSecurityConfig({
             ...CONSTS.DEFAULT_ENDPOINT_SECURITY,
             type: llmProviderEndpointConfiguration.authenticationConfiguration.type,
             service: llmProviderEndpointConfiguration.authenticationConfiguration.parameters.awsServiceName,
             accessKey,
-            secretKey,
+            secretKey: secretKeyToSave,
             region,
             roleArn: null,
             roleRegion: null,
