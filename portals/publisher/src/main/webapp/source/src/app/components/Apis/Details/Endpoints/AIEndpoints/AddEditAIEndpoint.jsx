@@ -51,6 +51,7 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 import Checkbox from '@mui/material/Checkbox';
 import { APIContext } from 'AppComponents/Apis/Details/components/ApiContext';
 import { getBasePath } from 'AppComponents/Shared/Utils';
+import HelpOutline from '@mui/icons-material/HelpOutline';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -77,6 +78,9 @@ const classes = {
     endpointErrorChip: `${PREFIX}-endpointErrorChip`,
     deploymentStageSelect: `${PREFIX}-deploymentStageSelect`,
     deploymentTypeText: `${PREFIX}-deploymentTypeText`,
+    credentialSourceSelect: `${PREFIX}-credentialSourceSelect`,
+    helpButton: `${PREFIX}-helpButton`,
+    helpIcon: `${PREFIX}-helpIcon`,
 }
 
 const StyledGrid = styled(Grid)((
@@ -110,7 +114,7 @@ const StyledGrid = styled(Grid)((
     },
 
     [`& .${classes.extraPadding}`]: {
-        paddingLeft: theme.spacing(2),
+        paddingLeft: theme.spacing(4),
     },
 
     [`& .${classes.actionButtonSection}`]: {
@@ -156,6 +160,19 @@ const StyledGrid = styled(Grid)((
     [`& .${classes.deploymentTypeText}`]: {
         marginBottom: theme.spacing(1),
         color: theme.palette.text.secondary,
+    },
+
+    [`& .${classes.credentialSourceSelect}`]: {
+        marginBottom: theme.spacing(1),
+    },
+
+    [`& .${classes.helpButton}`]: {
+        padding: 0,
+        minWidth: 20,
+    },
+
+    [`& .${classes.helpIcon}`]: {
+        fontSize: 20,
     },
 }));
 
@@ -530,16 +547,28 @@ const AddEditAIEndpoint = ({
     function testEndpoint(endpointURL, apiID) {
         setUpdating(true);
         const restApi = new API();
+        // AWS Bedrock endpoints require SigV4-signed requests, so an unsigned reachability probe is
+        // rejected with 403 (Forbidden). For these endpoints a 403 still confirms the endpoint is
+        // reachable and must not be reported as invalid.
+        const isAwsSigV4 = IS_AWS_SIGV4_AUTH_ENABLED(llmProviderEndpointConfiguration);
         restApi.testEndpoint(endpointURL, apiID)
             .then((result) => {
-                if (result.body.error !== null) {
+                const responseStatus = result.body.statusCode;
+                const awsReachable = isAwsSigV4 && responseStatus === 403;
+                if (awsReachable) {
+                    setStatusCode(intl.formatMessage({
+                        id: 'Apis.Details.Endpoints.AIEndpoints.AddEditAIEndpoint.test.endpoint.reachable',
+                        defaultMessage: 'Reachable',
+                    }));
+                    setIsErrorCode(false);
+                } else if (result.body.error !== null) {
                     setStatusCode(result.body.error);
                     setIsErrorCode(true);
                 } else {
-                    setStatusCode(result.body.statusCode + ' ' + result.body.statusMessage);
+                    setStatusCode(responseStatus + ' ' + result.body.statusMessage);
                     setIsErrorCode(false);
                 }
-                if (result.body.statusCode >= 200 && result.body.statusCode < 300) {
+                if ((responseStatus >= 200 && responseStatus < 300) || awsReachable) {
                     setIsEndpointValid(true);
                     setIsErrorCode(false);
                 } else {
@@ -844,9 +873,11 @@ const AddEditAIEndpoint = ({
         // Assume role turned off: persist without the role fields.
         persistAWSEndpointSecurity(authType, false);
     }
-    const handleEnvironmentCredentialsToggle = (e) => {
-        const { checked } = e.target;
-        const newAuthType = checked ? 'environment' : 'stored';
+    const handleCredentialSourceChange = (e) => {
+        const newAuthType = e.target.value;
+        if (newAuthType === authType) {
+            return;
+        }
         setAuthType(newAuthType);
         persistAWSEndpointSecurity(newAuthType, assumeRole);
     }
@@ -1237,31 +1268,66 @@ const AddEditAIEndpoint = ({
                             {IS_AWS_SIGV4_AUTH_ENABLED(llmProviderEndpointConfiguration) && (
                                 <>
                                     <Grid item xs={12}>
-                                        <FormControlLabel
-                                            control={(
-                                                <Checkbox
-                                                    color='primary'
-                                                    checked={authType === 'environment'}
-                                                    onChange={handleEnvironmentCredentialsToggle}
-                                                    disabled={isRestricted(
-                                                        ['apim:api_create'],
-                                                        apiObject
-                                                    )}
-                                                    name='useEnvironmentCredentials'
-                                                />
-                                            )}
-                                            label={(
+                                        <FormControl
+                                            component='fieldset'
+                                            className={classes.credentialSourceSelect}
+                                        >
+                                            <Typography className={classes.deploymentTypeText}>
                                                 <FormattedMessage
                                                     id={'Apis.Details.Endpoints.AIEndpoints.Edit'
-                                                        + '.useEnvironmentCredentials'}
-                                                    defaultMessage='Use environment credentials'
+                                                        + '.select.credential.source'}
+                                                    defaultMessage='Select Credential Source'
                                                 />
-                                            )}
-                                        />
+                                            </Typography>
+                                            <RadioGroup
+                                                row
+                                                aria-label='credential-source'
+                                                name='credential-source'
+                                                value={authType}
+                                                onChange={handleCredentialSourceChange}
+                                            >
+                                                <FormControlLabel
+                                                    value='stored'
+                                                    control={(
+                                                        <Radio
+                                                            disabled={isRestricted(
+                                                                ['apim:api_create'],
+                                                                apiObject
+                                                            )}
+                                                        />
+                                                    )}
+                                                    label={(
+                                                        <FormattedMessage
+                                                            id={'Apis.Details.Endpoints.AIEndpoints.Edit'
+                                                                + '.storedCredentials'}
+                                                            defaultMessage='Stored credentials'
+                                                        />
+                                                    )}
+                                                />
+                                                <FormControlLabel
+                                                    value='environment'
+                                                    control={(
+                                                        <Radio
+                                                            disabled={isRestricted(
+                                                                ['apim:api_create'],
+                                                                apiObject
+                                                            )}
+                                                        />
+                                                    )}
+                                                    label={(
+                                                        <FormattedMessage
+                                                            id={'Apis.Details.Endpoints.AIEndpoints.Edit'
+                                                                + '.environmentCredentials'}
+                                                            defaultMessage='Environment credentials'
+                                                        />
+                                                    )}
+                                                />
+                                            </RadioGroup>
+                                        </FormControl>
                                     </Grid>
                                     {authType !== 'environment' && (
                                         <>
-                                            <Grid item xs={4}>
+                                            <Grid item xs={4} className={classes.extraPadding}>
                                                 <TextField
                                                     disabled={isRestricted(
                                                         ['apim:api_create'],
@@ -1289,7 +1355,7 @@ const AddEditAIEndpoint = ({
                                                     }}
                                                 />
                                             </Grid>
-                                            <Grid item xs={4}>
+                                            <Grid item xs={4} className={classes.extraPadding}>
                                                 <TextField
                                                     disabled={isRestricted(
                                                         ['apim:api_create'],
@@ -1320,7 +1386,7 @@ const AddEditAIEndpoint = ({
                                             </Grid>
                                         </>
                                     )}
-                                    <Grid item xs={4}>
+                                    <Grid item xs={4} className={classes.extraPadding}>
                                         <TextField
                                             disabled={isRestricted(
                                                 ['apim:api_create'],
@@ -1347,7 +1413,7 @@ const AddEditAIEndpoint = ({
                                             }}
                                         />
                                     </Grid>
-                                    <Grid item className={classes.extraPadding}>
+                                    <Grid item xs={12} className={classes.extraPadding}>
                                         <FormControlLabel
                                             control={(
                                                 <Checkbox
@@ -1369,6 +1435,23 @@ const AddEditAIEndpoint = ({
                                                 />
                                             )}
                                         />
+                                        <Tooltip
+                                            title={(
+                                                <FormattedMessage
+                                                    id={'Apis.Details.Endpoints.AIEndpoints.Edit'
+                                                    + '.enableSTSAssumeRole.tooltip'}
+                                                    defaultMessage={'The gateway assumes this IAM role and signs '
+                                                        + 'the request with the short-lived credentials it returns, '
+                                                        + 'instead of using the credentials above directly. Use it '
+                                                        + 'to follow least privilege or to reach a role in another '
+                                                        + 'AWS account.'}
+                                                />
+                                            )}
+                                        >
+                                            <Button className={classes.helpButton}>
+                                                <HelpOutline className={classes.helpIcon} />
+                                            </Button>
+                                        </Tooltip>
                                         {assumeRole && (
                                             <Collapse in={assumeRole}>
                                                 <TextField
